@@ -101,7 +101,7 @@ privileged Vs unprivileged linkage and placement. */
 /*
  * Defines the size, in words, of the stack allocated to the idle task.
  */
-#define tskIDLE_STACK_SIZE	configMINIMAL_STACK_SIZE
+#define tskIDLE_STACK_SIZE	176	//configMINIMAL_STACK_SIZE
 
 /*
  * Task control block.  A task control block (TCB) is allocated for each task,
@@ -1241,7 +1241,7 @@ portBASE_TYPE xReturn;
 		/* Create the idle task, storing its handle in xIdleTaskHandle so it can
 		be returned by the xTaskGetIdleTaskHandle() function. */
 		xReturn = xTaskCreate( prvIdleTask, ( signed char * ) "IDLE", tskIDLE_STACK_SIZE, ( void * ) NULL, ( tskIDLE_PRIORITY | portPRIVILEGE_BIT ), &xIdleTaskHandle ); /*lint !e961 MISRA exception, justified as it is not a redundant explicit cast to all supported compilers. */
-printf("idle_task_hdl : %x\n", xIdleTaskHandle);
+os_printf("idle_task_hdl : %x\n", xIdleTaskHandle);
 	}
 	#else
 	{
@@ -1270,7 +1270,7 @@ printf("idle_task_hdl : %x\n", xIdleTaskHandle);
 		STEPPING THROUGH HERE USING A DEBUGGER CAN CAUSE BIG PROBLEMS IF THE
 		DEBUGGER ALLOWS INTERRUPTS TO BE PROCESSED. */
 		//portDISABLE_INTERRUPTS();
-vPortEnterCritical1();
+PortDisableInt_NoNest();
 
 		xSchedulerRunning = pdTRUE;
 		xTickCount = ( portTickType ) 0U;
@@ -1310,7 +1310,7 @@ vTaskEndScheduler( void )
 	layer must ensure interrupts enable	bit is left in the correct state. */
 
 	//portDISABLE_INTERRUPTS();
-vPortEnterCritical1();
+PortDisableInt_NoNest();
 	xSchedulerRunning = pdFALSE;
 	vPortEndScheduler();
 }
@@ -2734,7 +2734,7 @@ tskTCB *pxNewTCB;
 
 #if ( configUSE_MUTEXES == 1 )
 
-	void ICACHE_FLASH_ATTR
+	void
 	vTaskPriorityDisinherit( xTaskHandle const pxMutexHolder )
 	{
 	tskTCB * const pxTCB = ( tskTCB * ) pxMutexHolder;
@@ -2769,7 +2769,7 @@ tskTCB *pxNewTCB;
 	vTaskEnterCritical( void )
 	{
 		//portDISABLE_INTERRUPTS();
-vPortEnterCritical1();
+PortDisableInt_NoNest();
 		if( xSchedulerRunning != pdFALSE )
 		{
 			( pxCurrentTCB->uxCriticalNesting )++;
@@ -2793,7 +2793,7 @@ vPortEnterCritical1();
 				if( pxCurrentTCB->uxCriticalNesting == 0U )
 				{
 					//portENABLE_INTERRUPTS();
-vPortExitCritical1();
+					PortEnableInt_NoNest();
 				}
 			}
 		}

@@ -32,6 +32,7 @@
 #ifndef __LWIPOPTS_H__
 #define __LWIPOPTS_H__
 
+#define LWIP_ESP8266
 /*
    -----------------------------------------------
    ---------- Platform specific locking ----------
@@ -48,13 +49,13 @@
  * MEMCPY: override this if you have a faster implementation at hand than the
  * one included in your C library
  */
-#define MEMCPY(dst,src,len)             memcpy(dst,src,len)
+#define MEMCPY(dst,src,len)             ets_memcpy(dst,src,len)
 
 /**
  * SMEMCPY: override this with care! Some compilers (e.g. gcc) can inline a
  * call to memcpy() if the length is known at compile time and is small.
  */
-#define SMEMCPY(dst,src,len)            memcpy(dst,src,len)
+#define SMEMCPY(dst,src,len)            ets_memcpy(dst,src,len)
 
 /*
    ------------------------------------
@@ -87,6 +88,21 @@
    ---------- Internal Memory Pool Sizes ----------
    ------------------------------------------------
 */
+/**
+ * MEMP_NUM_TCP_PCB: the number of simulatenously active TCP connections.
+ * (requires the LWIP_TCP option)
+ */
+#ifndef MEMP_NUM_TCP_PCB
+#define MEMP_NUM_TCP_PCB                11
+#endif
+
+/**
+ * MEMP_NUM_NETCONN: the number of struct netconns.
+ * (only needed if you use the sequential API, like api_lib.c)
+ */
+#ifndef MEMP_NUM_NETCONN
+#define MEMP_NUM_NETCONN                10
+#endif
 
 /*
    --------------------------------
@@ -107,6 +123,34 @@
    ---------- IP options ----------
    --------------------------------
 */
+/**
+ * IP_REASSEMBLY==1: Reassemble incoming fragmented IP packets. Note that
+ * this option does not affect outgoing packet sizes, which can be controlled
+ * via IP_FRAG.
+ */
+#define IP_REASSEMBLY                   0
+
+/**
+ * IP_FRAG==1: Fragment outgoing IP packets if their size exceeds MTU. Note
+ * that this option does not affect incoming packet sizes, which can be
+ * controlled via IP_REASSEMBLY.
+ */
+#define IP_FRAG                         0
+
+/**
+ * IP_REASS_MAXAGE: Maximum time (in multiples of IP_TMR_INTERVAL - so seconds, normally)
+ * a fragmented IP packet waits for all fragments to arrive. If not all fragments arrived
+ * in this time, the whole packet is discarded.
+ */
+#define IP_REASS_MAXAGE                 3
+
+/**
+ * IP_REASS_MAX_PBUFS: Total maximum amount of pbufs waiting to be reassembled.
+ * Since the received pbufs are enqueued, be sure to configure
+ * PBUF_POOL_SIZE > IP_REASS_MAX_PBUFS so that the stack is still able to receive
+ * packets even if the maximum amount of fragments is enqueued for reassembly!
+ */
+#define IP_REASS_MAX_PBUFS              10
 
 /*
    ----------------------------------
@@ -182,7 +226,7 @@
  *     LWIP_CALLBACK_API==1: The PCB callback function is called directly
  *         for the event. This is the default.
 */
-#define TCP_MSS                         1024
+#define TCP_MSS                         1460
 
 /**
  * TCP_MAXRTX: Maximum number of retransmissions of data segments.
@@ -195,6 +239,11 @@
  */
 #define TCP_SYNMAXRTX                   3
 
+/**
+ * TCP_LISTEN_BACKLOG: Enable the backlog option for tcp listen pcb.
+ */
+#define TCP_LISTEN_BACKLOG              1
+
 /*
    ----------------------------------
    ---------- Pbuf options ----------
@@ -206,6 +255,13 @@
    ---------- Network Interfaces options ----------
    ------------------------------------------------
 */
+
+/**
+ * LWIP_NETIF_HOSTNAME==1: use DHCP_OPTION_HOSTNAME with netif's hostname
+ * field.
+ */
+#define LWIP_NETIF_HOSTNAME             1
+
 /**
  * LWIP_NETIF_TX_SINGLE_PBUF: if this is set to 1, lwIP tries to put all data
  * to be sent into one single pbuf. This is for compatibility with DMA-enabled
@@ -235,6 +291,13 @@
    ------------------------------------
 */
 /**
+ * TCPIP_THREAD_NAME: The name assigned to the main tcpip thread.
+ */
+#ifndef TCPIP_THREAD_NAME
+#define TCPIP_THREAD_NAME              "tiT"
+#endif
+
+/**
  * TCPIP_THREAD_STACKSIZE: The stack size used by the main tcpip thread.
  * The stack size value itself is platform-dependent, but is passed to
  * sys_thread_new() when the thread is created.
@@ -246,7 +309,7 @@
  * The priority value itself is platform-dependent, but is passed to
  * sys_thread_new() when the thread is created.
  */
-#define TCPIP_THREAD_PRIO               (configMAX_PRIORITIES-4)
+#define TCPIP_THREAD_PRIO               (configMAX_PRIORITIES-5)
 
 /**
  * TCPIP_MBOX_SIZE: The mailbox size for the tcpip thread messages
@@ -281,6 +344,11 @@
    ---------- Sequential layer options ----------
    ----------------------------------------------
 */
+/**
+ * LWIP_TCPIP_CORE_LOCKING: (EXPERIMENTAL!)
+ * Don't use it if you're not an active lwIP project member
+ */
+#define LWIP_TCPIP_CORE_LOCKING         0
 
 /*
    ------------------------------------
@@ -314,13 +382,19 @@
 /**
  * SO_REUSE==1: Enable SO_REUSEADDR option.
  */
-#define SO_REUSE                        1
+#define SO_REUSE                        0
 
 /*
    ----------------------------------------
    ---------- Statistics options ----------
    ----------------------------------------
 */
+/**
+ * LWIP_STATS==1: Enable statistics collection in lwip_stats.
+ */
+#ifndef LWIP_STATS
+#define LWIP_STATS                      0
+#endif
 
 /*
    ---------------------------------

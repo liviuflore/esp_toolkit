@@ -127,7 +127,7 @@ static void prvHeapInit( void );
 
 /* The size of the structure placed at the beginning of each allocated memory
 block must by correctly byte aligned. */
-static const unsigned short heapSTRUCT_SIZE	= ( ( sizeof ( xBlockLink ) + ( portBYTE_ALIGNMENT - 1 ) ) & ~portBYTE_ALIGNMENT_MASK );
+static const size_t heapSTRUCT_SIZE  = ( ( sizeof ( xBlockLink ) + ( portBYTE_ALIGNMENT - 1 ) ) & ~portBYTE_ALIGNMENT_MASK );
 
 /* Ensure the pxEnd pointer will end up on the correct byte alignment. */
 //static const size_t xTotalHeapSize = ( ( size_t ) heapADJUSTED_HEAP_SIZE ) & ( ( size_t ) ~portBYTE_ALIGNMENT_MASK );
@@ -149,6 +149,21 @@ static size_t xBlockAllocatedBit = 0;
 
 /*-----------------------------------------------------------*/
 
+size_t xPortWantedSizeAlign(size_t xWantedSize)
+{
+	xWantedSize += heapSTRUCT_SIZE;
+
+	/* Ensure that blocks are always aligned to the required number
+	of bytes. */
+	if( ( xWantedSize & portBYTE_ALIGNMENT_MASK ) != 0x00 )
+	{
+		/* Byte alignment required. */
+		xWantedSize += ( portBYTE_ALIGNMENT - ( xWantedSize & portBYTE_ALIGNMENT_MASK ) );
+	}
+
+	return xWantedSize;
+}
+
 void *pvPortMalloc( size_t xWantedSize )
 {
 xBlockLink *pxBlock, *pxPreviousBlock, *pxNewBlockLink;
@@ -156,7 +171,8 @@ void *pvReturn = NULL;
 
 //    printf("%s %d %d\n", __func__, xWantedSize, xFreeBytesRemaining);
 
-	vTaskSuspendAll();
+//	vTaskSuspendAll();
+	ETS_INTR_LOCK();
 	{
 		/* If this is the first call to malloc then the heap will require
 		initialisation to setup the list of free blocks. */
@@ -175,15 +191,7 @@ void *pvReturn = NULL;
 			structure in addition to the requested amount of bytes. */
 			if( xWantedSize > 0 )
 			{
-				xWantedSize += heapSTRUCT_SIZE;
-
-				/* Ensure that blocks are always aligned to the required number 
-				of bytes. */
-				if( ( xWantedSize & portBYTE_ALIGNMENT_MASK ) != 0x00 )
-				{
-					/* Byte alignment required. */
-					xWantedSize += ( portBYTE_ALIGNMENT - ( xWantedSize & portBYTE_ALIGNMENT_MASK ) );
-				}
+				xWantedSize = xPortWantedSizeAlign(xWantedSize);
 			}
 
 			if( ( xWantedSize > 0 ) && ( xWantedSize <= xFreeBytesRemaining ) )
@@ -239,7 +247,8 @@ void *pvReturn = NULL;
 			}
 		}
 	}
-	xTaskResumeAll();
+//	xTaskResumeAll();
+	ETS_INTR_UNLOCK();
 
 	#if( configUSE_MALLOC_FAILED_HOOK == 1 )
 	{
@@ -287,13 +296,15 @@ xBlockLink *pxLink;
 				allocated. */
 				pxLink->xBlockSize &= ~xBlockAllocatedBit;
 
-				vTaskSuspendAll();
+//				vTaskSuspendAll();
+				ETS_INTR_LOCK();
 				{
 					/* Add this block to the list of free blocks. */
 					xFreeBytesRemaining += pxLink->xBlockSize;
 					prvInsertBlockIntoFreeList( ( ( xBlockLink * ) pxLink ) );
 				}
-				xTaskResumeAll();
+//				xTaskResumeAll();
+				ETS_INTR_UNLOCK();
 			}
 		}
 	}
@@ -313,7 +324,7 @@ void *pvPortCalloc(size_t count, size_t size)
   p = pvPortMalloc(count * size);
   if (p) {
     /* zero the memory */
-    memset(p, 0, count * size);
+    ets_memset(p, 0, count * size);
   }
   return p;
 }
@@ -337,7 +348,7 @@ void *pvPortRealloc(void *mem, size_t newsize)
      p = pvPortMalloc(newsize);
      if (p) {
        /* zero the memory */
-       memcpy(p, mem, newsize);
+       ets_memcpy(p, mem, newsize);
        vPortFree(mem);
      }
      return p;     
@@ -347,13 +358,15 @@ void *realloc(void *ptr, size_t nbytes) __attribute__((alias("pvPortRealloc")));
 
 /*-----------------------------------------------------------*/
 
-size_t xPortGetFreeHeapSize( void )
+size_t ICACHE_FLASH_ATTR
+xPortGetFreeHeapSize( void )
 {
 	return xFreeBytesRemaining;
 }
 /*-----------------------------------------------------------*/
 
-void vPortInitialiseBlocks( void )
+void ICACHE_FLASH_ATTR
+vPortInitialiseBlocks( void )
 {
 	/* This just exists to keep the linker quiet. */
 }

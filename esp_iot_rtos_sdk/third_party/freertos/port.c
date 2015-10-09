@@ -86,8 +86,8 @@ unsigned cpu_sr;
 variable. */
 static unsigned portBASE_TYPE uxCriticalNesting = 0;
 
-void ICACHE_FLASH_ATTR vPortEnterCritical( void );
-void ICACHE_FLASH_ATTR vPortExitCritical( void );
+void vPortEnterCritical( void );
+void vPortExitCritical( void );
 /*
  * See header file for description.
  */
@@ -123,23 +123,23 @@ pxPortInitialiseStack( portSTACK_TYPE *pxTopOfStack, pdTASK_CODE pxCode, void *p
 }
 
 
-
-
-
-
 void PendSV( char req )
 {
-char tmp=0;
-if(ClosedLv1Isr == 0)
-{
-	vPortEnterCritical();
-	tmp = 1;
-}
+	char tmp=0;
+//ETS_INTR_LOCK();
+
+	if( NMIIrqIsOn == 0 )
+	{
+		vPortEnterCritical();
+		//PortDisableInt_NoNest();
+		tmp = 1;
+	}
+
 	if(req ==1)
 	{
 		SWReq = 1;
 	}
-	else
+	else if(req ==2)
 		HdlMacSig= 1;
 #if 0
 	GPIO_REG_WRITE(GPIO_STATUS_W1TS_ADDRESS, 0x40);	
@@ -184,24 +184,24 @@ GPIOIntrHdl(void)
 	}
 }
 #else
-void SoftIsrHdl(void)
+void SoftIsrHdl(void *arg)
 {
 //if(DbgVal5==1)
 	//printf("GP_%d,",SWReq);
+	PendSvIsPosted = 0;
 	portBASE_TYPE xHigherPriorityTaskWoken=pdFALSE ;
 	if(HdlMacSig == 1)
 	{
-		HdlMacSig = 0;
 		xHigherPriorityTaskWoken = MacIsrSigPostDefHdl();
+		HdlMacSig = 0;
 	}
 	if( xHigherPriorityTaskWoken || (SWReq==1)) 
 	{
 //if( DbgVal5==1 || DbgVal10==1 )
 	//printf("_x_s,");
-		SWReq = 0;
 		_xt_timer_int1();
+		SWReq = 0;
 	}
-	PendSvIsPosted = 0;
 }
 #endif
 
@@ -228,22 +228,23 @@ xPortStartScheduler( void )
 	//pendsv setting
 			/*******GPIO sdio_clk isr*********/
 #if 0
-    _xt_isr_attach(ETS_GPIO_INUM, GPIOIntrHdl);
+    _xt_isr_attach(ETS_GPIO_INUM, GPIOIntrHdl, NULL);
     _xt_isr_unmask(1<<ETS_GPIO_INUM);
 #else
 			/*******software isr*********/
-   	_xt_isr_attach(ETS_SOFT_INUM, SoftIsrHdl);
+   	_xt_isr_attach(ETS_SOFT_INUM, SoftIsrHdl, NULL);
     _xt_isr_unmask(1<<ETS_SOFT_INUM);
 #endif
 
     /* Initialize system tick timer interrupt and schedule the first tick. */
     _xt_tick_timer_init();
 
-    printf("xPortStartScheduler\n");
+    os_printf("xPortStartScheduler\n");
     vTaskSwitchContext();
 
 //    REG_SET_BIT(0x3ff2006c, BIT(4));
 	/* Restore the context of the first task that is going to run. */
+
 	XT_RTOS_INT_EXIT();
 
 	/* Should not get here as the tasks are now running! */
@@ -262,14 +263,13 @@ vPortEndScheduler( void )
 /*-----------------------------------------------------------*/
 
 static unsigned int tick_lock=0;
-char ClosedLv1Isr = 0;
+static char ClosedLv1Isr = 0;
 
-void ICACHE_FLASH_ATTR
-vPortEnterCritical( void )
+void vPortEnterCritical( void )
 {
 	if(NMIIrqIsOn == 0)
 	{	
-		if( uxCriticalNesting == 0 )
+		//if( uxCriticalNesting == 0 )
 		{
 			if( ClosedLv1Isr !=1 )
 			{
@@ -283,8 +283,7 @@ vPortEnterCritical( void )
 }
 /*-----------------------------------------------------------*/
 
-void ICACHE_FLASH_ATTR
-vPortExitCritical( void )
+void vPortExitCritical( void )
 {
 	if(NMIIrqIsOn == 0)
 	{
@@ -302,10 +301,12 @@ vPortExitCritical( void )
 	}
 }
 
-static unsigned int tick_lock1=0;
-void ICACHE_FLASH_ATTR
-vPortEnterCritical1( void )
+
+void 
+PortDisableInt_NoNest( void )
 {
+//	printf("ERRRRRRR\n");
+
 	if(NMIIrqIsOn == 0)	
 	{
 		if( ClosedLv1Isr !=1 )
@@ -316,9 +317,11 @@ vPortEnterCritical1( void )
 	}
 }
 
-void ICACHE_FLASH_ATTR
-vPortExitCritical1( void )
+void 
+PortEnableInt_NoNest( void )
 {
+//	printf("ERRRRR\n");
+
 	if(NMIIrqIsOn == 0)
 	{		
 		if( ClosedLv1Isr ==1 )
@@ -331,11 +334,14 @@ vPortExitCritical1( void )
 
 /*-----------------------------------------------------------*/
 
-_xt_isr isr[16];
+_xt_isr_entry isr[16];
+char _xt_isr_status = 0;
 
-void _xt_isr_attach(uint8 i, _xt_isr func)
+void ICACHE_FLASH_ATTR
+_xt_isr_attach(uint8 i, _xt_isr func, void *arg)
 {
-    isr[i] = func;
+    isr[i].handler = func;
+    isr[i].arg = arg;
 }
 
 uint16 _xt_isr_handler(uint16 i)
@@ -359,7 +365,9 @@ uint16 _xt_isr_handler(uint16 i)
 
     _xt_clear_ints(1<<index);
 
-    isr[index]();
+    _xt_isr_status = 1;
+    isr[index].handler(isr[index].arg);
+    _xt_isr_status = 0;
 
     return i & ~(1 << index);
 }
